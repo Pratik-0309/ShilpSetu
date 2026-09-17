@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/buyer_service.dart';
 import '../../theme/app_theme.dart';
@@ -10,6 +9,7 @@ import '../../widgets/app_back_button.dart';
 /// Analytics dashboard screen for artisans.
 /// Displays key sales metrics, order fulfillment rates, and a 6-month sales
 /// trend chart powered by `fl_chart`.
+/// Connected 100% to real per-artisan data without any dummy/hardcoded numbers.
 class AnalyticsScreen extends StatefulWidget {
   final String? artisanId;
   const AnalyticsScreen({super.key, this.artisanId});
@@ -32,12 +32,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    final user = Provider.of<AppAuthProvider>(context, listen: false).userModel;
-    final fbUid = FirebaseAuth.instance.currentUser?.uid;
-    final aid = widget.artisanId ??
-        (fbUid != null && fbUid.isNotEmpty ? fbUid : null) ??
-        user?.uid ??
-        'XatExY7HGxd71WbhBoHiF7wMuVm2';
+    final auth = Provider.of<AppAuthProvider>(context, listen: false);
+    // Reuse identical artisan ID resolution as Home screen
+    final aid = widget.artisanId ?? auth.currentArtisanId;
 
     final results = await Future.wait([
       BuyerService.instance.getAnalyticsSummary(aid),
@@ -50,6 +47,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       _trustScore = results[1];
       _isLoading = false;
     });
+  }
+
+  Map<String, dynamic>? get _data {
+    if (_analytics == null) return null;
+    if (_analytics!.containsKey('data') && _analytics!['data'] is Map) {
+      return Map<String, dynamic>.from(_analytics!['data'] as Map);
+    }
+    return _analytics;
   }
 
   @override
@@ -102,8 +107,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   // ── Header Banner ───────────────────────────────────────────────────────────
   Widget _buildHeaderBanner() {
-    final growth = (_analytics?['revenue_growth_pct'] as num?)?.toDouble() ?? 0.0;
+    final growth = (_data?['revenue_growth_pct'] as num?)?.toDouble() ?? 0.0;
+    final totalRevenue = (_data?['total_revenue'] as num?)?.toDouble() ?? 0.0;
     final isPositive = growth >= 0;
+    final hasRevenue = totalRevenue > 0;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -134,7 +141,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '₹${((_analytics?['total_revenue'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(0)}',
+                  '₹${totalRevenue.toStringAsFixed(0)}',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 30,
@@ -154,13 +161,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            isPositive ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                            hasRevenue
+                                ? (isPositive ? Icons.trending_up_rounded : Icons.trending_down_rounded)
+                                : Icons.horizontal_rule_rounded,
                             color: Colors.white,
                             size: 16,
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            '${isPositive ? '+' : ''}$growth% this month',
+                            hasRevenue
+                                ? '${isPositive ? '+' : ''}${growth.toStringAsFixed(0)}% this month'
+                                : 'No data yet',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 12,
@@ -190,11 +201,22 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   // ── 4 KPI Grid Cards ────────────────────────────────────────────────────────
   Widget _buildKpiGrid() {
-    final totalOrders = _analytics?['total_orders'] ?? 0;
-    final aov = (_analytics?['average_order_value'] as num?)?.toDouble() ?? 0.0;
-    final bestSeller = _analytics?['best_selling_product'] as Map<String, dynamic>?;
-    final bestTitle = bestSeller?['title'] ?? 'Handcrafted Artifacts';
-    final bestUnits = bestSeller?['units_sold'] ?? 0;
+    final totalOrders = (_data?['total_orders'] as num?)?.toInt() ?? 0;
+    final completedOrders = (_data?['completed_orders'] as num?)?.toInt() ?? 0;
+    final aov = (_data?['average_order_value'] as num?)?.toDouble() ?? 0.0;
+    final bestSeller = _data?['best_selling_product'] as Map<String, dynamic>?;
+    final rawBestTitle = bestSeller?['title'] as String?;
+    final bestUnits = (bestSeller?['units_sold'] as num?)?.toInt() ?? 0;
+
+    final hasOrders = totalOrders > 0;
+    final hasBestSeller = bestUnits > 0 && rawBestTitle != null && rawBestTitle.isNotEmpty && rawBestTitle != 'No sales yet';
+    final bestTitle = hasBestSeller ? rawBestTitle! : 'No sales yet';
+    final bestSubtext = hasBestSeller ? '$bestUnits units sold' : '0 units sold';
+
+    final rating = (_trustScore?['rating'] as num?)?.toDouble() ?? 0.0;
+    final trustScore = (_trustScore?['trust_score'] as num?)?.toDouble() ?? 0.0;
+    final badge = _trustScore?['badge'] as String? ?? '🌱 New Artisan';
+    final hasReviews = rating > 0.0 || trustScore > 0.0;
 
     return GridView.count(
       crossAxisCount: 2,
@@ -209,7 +231,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           color: const Color(0xFF2E7D32),
           label: 'Total Orders',
           value: '$totalOrders orders',
-          subtext: '${_analytics?['completed_orders'] ?? 0} delivered',
+          subtext: '$completedOrders delivered',
         ),
         _kpiCard(
           icon: Icons.receipt_long_outlined,
@@ -223,14 +245,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           color: const Color(0xFFD4AF37),
           label: 'Best Seller',
           value: bestTitle.length > 15 ? '${bestTitle.substring(0, 14)}…' : bestTitle,
-          subtext: '$bestUnits units sold',
+          subtext: bestSubtext,
         ),
         _kpiCard(
           icon: Icons.verified_outlined,
           color: AppTheme.primaryTerracotta,
           label: 'Trust Score',
-          value: '${_trustScore?['trust_score'] ?? 4.8} / 5.0',
-          subtext: '${_trustScore?['badge'] ?? 'Master Artisan'}',
+          value: hasReviews ? '${trustScore.toStringAsFixed(1)} / 5.0' : 'Not rated yet',
+          subtext: hasReviews ? badge : 'No reviews yet',
         ),
       ],
     );
@@ -307,18 +329,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   // ── Sales Trend Chart Card (fl_chart) ───────────────────────────────────────
   Widget _buildChartCard() {
-    final trends = (_analytics?['monthly_trend'] as List?) ?? [];
-    if (trends.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final double maxRevenue = trends.fold<double>(
-      1000.0,
-      (max, item) {
-        final rev = (item['revenue'] as num?)?.toDouble() ?? 0.0;
-        return rev > max ? rev : max;
-      },
-    );
+    final trends = (_data?['monthly_trend'] as List?) ?? [];
+    final bool hasAnySales = trends.any((item) => ((item['revenue'] as num?)?.toDouble() ?? 0.0) > 0);
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -376,132 +388,186 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             ],
           ),
           const SizedBox(height: 24),
-          SizedBox(
-            height: 200,
-            child: BarChart(
-              BarChartData(
-                maxY: maxRevenue * 1.25,
-                barTouchData: BarTouchData(
-                  touchTooltipData: BarTouchTooltipData(
-                    getTooltipColor: (_) => const Color(0xFF2C221E),
-                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                      final monthName = trends[groupIndex]['month'] ?? '';
-                      return BarTooltipItem(
-                        '$monthName\n₹${rod.toY.toStringAsFixed(0)}',
-                        const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
-                      );
-                    },
-                  ),
-                  touchCallback: (event, response) {
-                    if (response != null && response.spot != null) {
-                      setState(() {
-                        _touchedIndex = response.spot!.touchedBarGroupIndex;
-                      });
-                    } else {
-                      setState(() {
-                        _touchedIndex = -1;
-                      });
-                    }
-                  },
-                ),
-                titlesData: FlTitlesData(
-                  show: true,
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 42,
-                      getTitlesWidget: (value, meta) {
-                        if (value == 0) return const SizedBox.shrink();
-                        if (value >= 1000) {
-                          return Text(
-                            '${(value / 1000).toStringAsFixed(0)}k',
-                            style: const TextStyle(fontSize: 10, color: Color(0xFF8D7B74)),
-                          );
-                        }
-                        return Text(
-                          value.toStringAsFixed(0),
-                          style: const TextStyle(fontSize: 10, color: Color(0xFF8D7B74)),
-                        );
-                      },
+          if (!hasAnySales)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
+              alignment: Alignment.center,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryTerracotta.withValues(alpha: 0.08),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.bar_chart_rounded,
+                      color: AppTheme.primaryTerracotta,
+                      size: 34,
                     ),
                   ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (value, meta) {
-                        final idx = value.toInt();
-                        if (idx >= 0 && idx < trends.length) {
-                          final isSelected = idx == _touchedIndex;
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(
-                              trends[idx]['month']?.toString() ?? '',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                                color: isSelected
-                                    ? AppTheme.primaryTerracotta
-                                    : const Color(0xFF6B5E57),
-                              ),
-                            ),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      },
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Start selling to see your trend',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF2C221E),
                     ),
                   ),
-                ),
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: maxRevenue / 4,
-                  getDrawingHorizontalLine: (value) => FlLine(
-                    color: const Color(0xFFF0EBE6),
-                    strokeWidth: 1,
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Your monthly sales and revenue chart will appear here as orders arrive.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF8D7B74),
+                    ),
                   ),
-                ),
-                borderData: FlBorderData(show: false),
-                barGroups: List.generate(trends.length, (i) {
-                  final rev = (trends[i]['revenue'] as num?)?.toDouble() ?? 0.0;
-                  final isTouched = i == _touchedIndex;
-                  return BarChartGroupData(
-                    x: i,
-                    barRods: [
-                      BarChartRodData(
-                        toY: rev,
-                        gradient: LinearGradient(
-                          colors: isTouched
-                              ? [const Color(0xFFD4AF37), AppTheme.primaryTerracotta]
-                              : [AppTheme.primaryTerracotta, const Color(0xFFE07A5F)],
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                        ),
-                        width: 22,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
-                      ),
-                    ],
+                ],
+              ),
+            )
+          else
+            _buildBarChart(trends),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBarChart(List<dynamic> trends) {
+    final double maxRevenue = trends.fold<double>(
+      1000.0,
+      (max, item) {
+        final rev = (item['revenue'] as num?)?.toDouble() ?? 0.0;
+        return rev > max ? rev : max;
+      },
+    );
+
+    return SizedBox(
+      height: 200,
+      child: BarChart(
+        BarChartData(
+          maxY: maxRevenue * 1.25,
+          barTouchData: BarTouchData(
+            touchTooltipData: BarTouchTooltipData(
+              getTooltipColor: (_) => const Color(0xFF2C221E),
+              getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                final monthName = trends[groupIndex]['month'] ?? '';
+                return BarTooltipItem(
+                  '$monthName\n₹${rod.toY.toStringAsFixed(0)}',
+                  const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                );
+              },
+            ),
+            touchCallback: (event, response) {
+              if (response != null && response.spot != null) {
+                setState(() {
+                  _touchedIndex = response.spot!.touchedBarGroupIndex;
+                });
+              } else {
+                setState(() {
+                  _touchedIndex = -1;
+                });
+              }
+            },
+          ),
+          titlesData: FlTitlesData(
+            show: true,
+            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 42,
+                getTitlesWidget: (value, meta) {
+                  if (value == 0) return const SizedBox.shrink();
+                  if (value >= 1000) {
+                    return Text(
+                      '${(value / 1000).toStringAsFixed(0)}k',
+                      style: const TextStyle(fontSize: 10, color: Color(0xFF8D7B74)),
+                    );
+                  }
+                  return Text(
+                    value.toStringAsFixed(0),
+                    style: const TextStyle(fontSize: 10, color: Color(0xFF8D7B74)),
                   );
-                }),
+                },
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                getTitlesWidget: (value, meta) {
+                  final idx = value.toInt();
+                  if (idx >= 0 && idx < trends.length) {
+                    final isSelected = idx == _touchedIndex;
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        trends[idx]['month']?.toString() ?? '',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                          color: isSelected
+                              ? AppTheme.primaryTerracotta
+                              : const Color(0xFF6B5E57),
+                        ),
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
               ),
             ),
           ),
-        ],
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            horizontalInterval: maxRevenue / 4,
+            getDrawingHorizontalLine: (value) => const FlLine(
+              color: Color(0xFFF0EBE6),
+              strokeWidth: 1,
+            ),
+          ),
+          borderData: FlBorderData(show: false),
+          barGroups: List.generate(trends.length, (i) {
+            final rev = (trends[i]['revenue'] as num?)?.toDouble() ?? 0.0;
+            final isTouched = i == _touchedIndex;
+            return BarChartGroupData(
+              x: i,
+              barRods: [
+                BarChartRodData(
+                  toY: rev,
+                  gradient: LinearGradient(
+                    colors: isTouched
+                        ? [const Color(0xFFD4AF37), AppTheme.primaryTerracotta]
+                        : [AppTheme.primaryTerracotta, const Color(0xFFE07A5F)],
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                  ),
+                  width: 22,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                ),
+              ],
+            );
+          }),
+        ),
       ),
     );
   }
 
   // ── Trust & Reliability Card ────────────────────────────────────────────────
   Widget _buildTrustReliabilityCard() {
-    final compRate = (_trustScore?['completion_rate_pct'] as num?)?.toInt() ?? 100;
-    final rating = (_trustScore?['rating'] as num?)?.toDouble() ?? 4.8;
-    final trustScore = (_trustScore?['trust_score'] as num?)?.toDouble() ?? 4.8;
-    final badge = _trustScore?['badge'] ?? 'Master Artisan';
+    final compRate = (_trustScore?['completion_rate_pct'] as num?)?.toInt() ?? 0;
+    final rating = (_trustScore?['rating'] as num?)?.toDouble() ?? 0.0;
+    final trustScore = (_trustScore?['trust_score'] as num?)?.toDouble() ?? 0.0;
+    final badge = (_trustScore?['badge'] as String?) ?? '🌱 New Artisan';
+    final hasReviews = rating > 0.0 || trustScore > 0.0;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -548,15 +614,27 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           Row(
             children: [
               Expanded(
-                child: _trustMetricCol('Order Fulfillment', '$compRate%', compRate / 100),
+                child: _trustMetricCol(
+                  'Order Fulfillment',
+                  compRate > 0 ? '$compRate%' : '0%',
+                  compRate > 0 ? compRate / 100 : 0.0,
+                ),
               ),
               Container(width: 1, height: 40, color: const Color(0xFFD9D0C7)),
               Expanded(
-                child: _trustMetricCol('Buyer Rating', '★ $rating', rating / 5.0),
+                child: _trustMetricCol(
+                  'Buyer Rating',
+                  hasReviews ? '★ ${rating.toStringAsFixed(1)}' : 'Not rated yet',
+                  hasReviews ? rating / 5.0 : 0.0,
+                ),
               ),
               Container(width: 1, height: 40, color: const Color(0xFFD9D0C7)),
               Expanded(
-                child: _trustMetricCol('Trust Score', '$trustScore / 5', trustScore / 5.0),
+                child: _trustMetricCol(
+                  'Trust Score',
+                  hasReviews ? '${trustScore.toStringAsFixed(1)} / 5' : 'New',
+                  hasReviews ? trustScore / 5.0 : 0.0,
+                ),
               ),
             ],
           ),
@@ -569,29 +647,29 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            value,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF2C221E),
-            ),
+            label,
+            style: const TextStyle(fontSize: 10, color: Color(0xFF8D7B74), fontWeight: FontWeight.w500),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
           Text(
-            label,
-            style: const TextStyle(fontSize: 11, color: Color(0xFF7A6B63)),
-            textAlign: TextAlign.center,
+            value,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF2C221E)),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 6),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
               value: progress.clamp(0.0, 1.0),
+              backgroundColor: const Color(0xFFE5DDD5),
+              valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.successGreen),
               minHeight: 4,
-              backgroundColor: const Color(0xFFE8E0D8),
-              valueColor: const AlwaysStoppedAnimation(AppTheme.primaryTerracotta),
             ),
           ),
         ],
@@ -601,7 +679,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   // ── Order Status Breakdown ──────────────────────────────────────────────────
   Widget _buildStatusBreakdownCard() {
-    final statusMap = (_analytics?['order_status_counts'] as Map<String, dynamic>?) ?? {};
+    final statusMap = (_data?['order_status_counts'] as Map<String, dynamic>?) ?? {};
 
     return Container(
       padding: const EdgeInsets.all(18),

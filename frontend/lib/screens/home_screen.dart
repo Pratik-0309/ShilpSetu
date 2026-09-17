@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import '../config/api_config.dart';
 import '../models/product_model.dart';
+import '../models/user_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/language_provider.dart';
 import '../providers/navigation_provider.dart';
@@ -31,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _ordersToPack = 0;
   List<Map<String, dynamic>> _recentOrders = [];
   String? _fetchedUserName;
+  String? _fetchedProfilePhotoUrl;
   bool _isLoading = true;
   String? _lastLoadedArtisanId;
   int _currentBannerIndex = 0;
@@ -122,12 +124,32 @@ class _HomeScreenState extends State<HomeScreen> {
       } catch (_) {}
     }
 
-    // Parse user name
+    // Parse user profile (name and profile image)
     String? userName;
+    String? photoUrl;
     if (userResp.statusCode == 200) {
       try {
         final decoded = jsonDecode(userResp.body) as Map<String, dynamic>;
-        userName = decoded['user']?['name']?.toString();
+        final userObj = decoded['user'] as Map<String, dynamic>?;
+        if (userObj != null) {
+          userName = userObj['name']?.toString();
+          photoUrl = userObj['profile_photo_url']?.toString() ??
+                     userObj['profile_image']?.toString() ??
+                     userObj['avatar_url']?.toString() ??
+                     userObj['avatarUrl']?.toString() ??
+                     userObj['photo_url']?.toString() ??
+                     userObj['photoUrl']?.toString() ??
+                     userObj['imageUrl']?.toString() ??
+                     userObj['profilePhotoUrl']?.toString();
+
+          // Sync with AppAuthProvider if present
+          final currentUser = auth.userModel;
+          if (currentUser == null) {
+            auth.updateUserModel(UserModel.fromJson(userObj));
+          } else if (photoUrl != null && photoUrl.isNotEmpty && currentUser.profilePhotoUrl != photoUrl) {
+            auth.updateUserModel(currentUser.copyWith(profilePhotoUrl: photoUrl));
+          }
+        }
       } catch (_) {}
     }
 
@@ -138,6 +160,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _ordersToPack = toPack;
         _recentOrders = recentOrders;
         if (userName != null && userName.isNotEmpty) _fetchedUserName = userName;
+        if (photoUrl != null && photoUrl.isNotEmpty) _fetchedProfilePhotoUrl = photoUrl;
         _isLoading = false;
       });
     }
@@ -174,6 +197,19 @@ class _HomeScreenState extends State<HomeScreen> {
     if (fullName.isEmpty) return 'Artisan';
     final first = fullName.split(' ').first;
     return first[0].toUpperCase() + first.substring(1);
+  }
+
+  String? _getProfilePhotoUrl(AppAuthProvider auth) {
+    final fromState = _fetchedProfilePhotoUrl?.trim();
+    if (fromState != null && fromState.isNotEmpty) return fromState;
+
+    final fromModel = auth.userModel?.profilePhotoUrl.trim();
+    if (fromModel != null && fromModel.isNotEmpty) return fromModel;
+
+    final fromFb = auth.firebaseUser?.photoURL?.trim();
+    if (fromFb != null && fromFb.isNotEmpty) return fromFb;
+
+    return null;
   }
 
   @override
@@ -260,6 +296,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildHeader(BuildContext context, LanguageProvider language, AppAuthProvider auth) {
     final hasUnread = _ordersToPack > 0;
     final initial = _getArtisanFirstName(auth).substring(0, 1).toUpperCase();
+    final photoUrl = _getProfilePhotoUrl(auth);
 
     return Padding(
       padding: const EdgeInsets.only(top: 12, left: 16, right: 16, bottom: 4),
@@ -352,21 +389,107 @@ class _HomeScreenState extends State<HomeScreen> {
                 shape: BoxShape.circle,
                 border: Border.all(color: AppTheme.secondaryOchre, width: 2),
               ),
-              child: CircleAvatar(
-                radius: 17,
-                backgroundColor: AppTheme.primaryTerracotta.withValues(alpha: 0.15),
-                child: Text(
-                  initial,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.primaryTerracotta,
-                  ),
-                ),
+              child: _buildAvatar(
+                photoUrl: photoUrl,
+                initial: initial,
+                isLoading: _isLoading && photoUrl == null,
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAvatar({
+    required String? photoUrl,
+    required String initial,
+    required bool isLoading,
+  }) {
+    const double avatarSize = 34.0; // matches radius: 17
+
+    // 1. Loading state when profile API call is still in progress and no photo is available yet
+    if (isLoading) {
+      return Container(
+        width: avatarSize,
+        height: avatarSize,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppTheme.primaryTerracotta.withValues(alpha: 0.12),
+        ),
+        child: const Center(
+          child: SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.8,
+              color: AppTheme.secondaryOchre,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // 2. Validate URL if present (must be http:// or https://)
+    final trimmedUrl = photoUrl?.trim();
+    final bool hasValidUrl = trimmedUrl != null &&
+        trimmedUrl.isNotEmpty &&
+        (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://'));
+
+    if (hasValidUrl) {
+      return ClipOval(
+        child: Image.network(
+          trimmedUrl,
+          width: avatarSize,
+          height: avatarSize,
+          fit: BoxFit.cover, // resizeMode: 'cover' / CSS object-fit: cover
+          cacheWidth: 100, // Caching optimization for memory efficiency
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return Container(
+              width: avatarSize,
+              height: avatarSize,
+              color: AppTheme.primaryTerracotta.withValues(alpha: 0.12),
+              child: const Center(
+                child: SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.5,
+                    color: AppTheme.secondaryOchre,
+                  ),
+                ),
+              ),
+            );
+          },
+          errorBuilder: (context, error, stackTrace) {
+            // Gracefully fall back to initial on broken or invalid image URL
+            return _buildInitialAvatar(initial, avatarSize);
+          },
+        ),
+      );
+    }
+
+    // 3. Fallback to user's initial (current behavior)
+    return _buildInitialAvatar(initial, avatarSize);
+  }
+
+  Widget _buildInitialAvatar(String initial, double size) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppTheme.primaryTerracotta.withValues(alpha: 0.15),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
+          color: AppTheme.primaryTerracotta,
+        ),
       ),
     );
   }
@@ -611,8 +734,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 value: _isLoading ? '...' : '₹${revenue.toStringAsFixed(0)}',
                 trend: growth != null && growth > 0
                     ? '↑ ${growth.toStringAsFixed(0)}%'
-                    : (growth != null && growth < 0 ? '↓ ${growth.abs().toStringAsFixed(0)}%' : ''),
-                trendColor: AppTheme.successGreen,
+                    : (growth != null && growth < 0
+                        ? '↓ ${growth.abs().toStringAsFixed(0)}%'
+                        : (revenue > 0 ? '0%' : 'No data')),
+                trendColor: (growth != null && growth < 0)
+                    ? Colors.redAccent
+                    : (revenue > 0 ? AppTheme.successGreen : Colors.grey.shade600),
                 icon: Icons.currency_rupee_rounded,
                 iconColor: AppTheme.successGreen,
                 onTap: () => Navigator.push(
@@ -1145,7 +1272,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ? Image.network(
                                       prod.imageUrl,
                                       fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => _buildFallbackThumbnail(),
+                                      errorBuilder: (ctx, err, stack) => _buildFallbackThumbnail(),
                                     )
                                   : _buildFallbackThumbnail(),
                             ),

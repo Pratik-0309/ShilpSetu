@@ -199,7 +199,7 @@ class _BuyerMainScreenState extends State<_BuyerMainScreen> {
     final name = auth.userModel?.name ?? 'Buyer';
 
     final titles = [
-      "ShilpSetu",
+      lang.getText('app_title'),
       lang.getText('buyer_rfq_title'),
       lang.getText('orders_title'),
       lang.getText('profile_title'),

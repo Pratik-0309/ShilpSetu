@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 orders_bp = Blueprint('orders', __name__)
 
-VALID_STATUSES = {"pending", "confirmed", "shipped", "delivered", "paid", "cancelled"}
+VALID_STATUSES = {"pending", "confirmed", "shipped", "out_for_delivery", "delivered", "paid", "cancelled"}
 
 
 def _serialize_order(doc) -> dict:
@@ -76,14 +76,19 @@ def create_order():
             "quantity":         int(data['quantity']),
             "total_price":      float(data['total_price']),
             "status":           "pending",
+            "status_history":   [
+                {"status": "placed", "timestamp": now_iso}
+            ],
             "delivery_address": data.get('delivery_address', ''),
             "buyer_name":       data.get('buyer_name', ''),
             "artisan_name":     data.get('artisan_name', ''),
             "product_title":    data.get('product_title', ''),
             "notes":            data.get('notes', ''),
-            "created_at":       now_iso,
-            "updated_at":       now_iso,
-            "rfq_id":           data.get('rfq_id', ''),
+            "payment_method":           data.get('payment_method', 'COD'),
+            "payment_status":           data.get('payment_status', 'pending'),
+            "created_at":               now_iso,
+            "updated_at":               now_iso,
+            "rfq_id":                   data.get('rfq_id', ''),
         }
         doc_ref.set(order)
         logger.info(f"Created order {doc_ref.id} for buyer={data['buyer_id']}")
@@ -174,7 +179,8 @@ def update_order(order_id):
     """
     data = request.get_json(silent=True) or {}
     allowed = ['status', 'delivery_address', 'notes', 'tracking_number', 'tracking_url',
-               'artisan_name', 'buyer_name', 'product_title', 'rating']
+               'artisan_name', 'buyer_name', 'product_title', 'rating', 'status_history',
+               'payment_method', 'payment_status', 'stripe_payment_intent_id', 'razorpay_payment_id']
     updates = {k: v for k, v in data.items() if k in allowed}
 
     if not updates:
@@ -199,7 +205,41 @@ def update_order(order_id):
         order_data = snap.to_dict()
         artisan_id = order_data.get('artisan_id')
 
-        updates['updated_at'] = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        updates['updated_at'] = now_iso
+
+        if 'status' in updates:
+            new_status = updates['status']
+            stage_map = {
+                'pending': 'placed',
+                'confirmed': 'packed',
+                'shipped': 'shipped',
+                'out_for_delivery': 'out_for_delivery',
+                'delivered': 'delivered',
+                'paid': 'delivered',
+                'cancelled': 'cancelled'
+            }
+            canonical_stage = stage_map.get(new_status, new_status)
+            history = list(order_data.get('status_history') or [])
+            if not history and order_data.get('created_at'):
+                history.append({"status": "placed", "timestamp": order_data['created_at']})
+
+            # If jumping forward, ensure preceding stages exist in timeline
+            if canonical_stage in ['shipped', 'out_for_delivery', 'delivered']:
+                if not any(h.get('status') == 'packed' for h in history):
+                    history.append({"status": "packed", "timestamp": now_iso})
+            if canonical_stage in ['out_for_delivery', 'delivered']:
+                if not any(h.get('status') == 'shipped' for h in history):
+                    history.append({"status": "shipped", "timestamp": now_iso})
+            if canonical_stage == 'delivered':
+                if not any(h.get('status') == 'out_for_delivery' for h in history):
+                    history.append({"status": "out_for_delivery", "timestamp": now_iso})
+
+            if not history or history[-1].get('status') != canonical_stage:
+                history.append({"status": canonical_stage, "timestamp": now_iso})
+
+            updates['status_history'] = history
+
         doc_ref.update(updates)
         updated = _serialize_order(doc_ref.get())
 

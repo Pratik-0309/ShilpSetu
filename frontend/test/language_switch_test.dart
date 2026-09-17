@@ -23,7 +23,7 @@ void main() {
     test('Initial language defaults to Hindi (hi) if no cache present', () {
       final provider = LanguageProvider();
       expect(provider.currentLanguageCode, 'hi');
-      expect(provider.getText('app_title'), 'शिल्पसेतु');
+      expect(provider.getText('app_title'), 'हुनरसाथी');
     });
 
     test('Switching to Marathi (mr) renders pure Marathi text without Hindi or English fallback', () async {
@@ -31,7 +31,7 @@ void main() {
       await provider.setLanguage('mr', updateFirestore: false);
 
       expect(provider.currentLanguageCode, 'mr');
-      expect(provider.getText('app_title'), 'शिल्पसेतू');
+      expect(provider.getText('app_title'), 'हुनरसाथी');
       expect(provider.getText('choose_language'), 'तुमची भाषा निवडा');
       expect(provider.getText('tab_home'), 'मुख्य');
       expect(provider.getText('tab_products'), 'शिल्प सूची');
@@ -51,7 +51,7 @@ void main() {
       await provider.setLanguage('en', updateFirestore: false);
 
       expect(provider.currentLanguageCode, 'en');
-      expect(provider.getText('app_title'), 'ShilpSetu');
+      expect(provider.getText('app_title'), 'HunarSathi');
       expect(provider.getText('choose_language'), 'Choose Your Language');
       expect(provider.getText('tab_home'), 'Home');
       expect(provider.getText('tab_products'), 'Catalog');
@@ -71,7 +71,7 @@ void main() {
       await provider.setLanguage('hi', updateFirestore: false);
 
       expect(provider.currentLanguageCode, 'hi');
-      expect(provider.getText('app_title'), 'शिल्पसेतु');
+      expect(provider.getText('app_title'), 'हुनरसाथी');
       expect(provider.getText('choose_language'), 'अपनी भाषा चुनें');
       expect(provider.getText('tab_home'), 'होम');
       expect(provider.getText('tab_products'), 'शिल्प सूची');
@@ -107,17 +107,17 @@ void main() {
       // User 1 logs in with Marathi preference
       provider.syncFromProfile('mr');
       expect(provider.currentLanguageCode, 'mr');
-      expect(provider.getText('app_title'), 'शिल्पसेतू');
+      expect(provider.getText('app_title'), 'हुनरसाथी');
 
       // User 1 logs out and User 2 logs in with English preference
       provider.syncFromProfile('en');
       expect(provider.currentLanguageCode, 'en');
-      expect(provider.getText('app_title'), 'ShilpSetu');
+      expect(provider.getText('app_title'), 'HunarSathi');
 
       // User 2 logs out and User 1 logs back in with Marathi preference
       provider.syncFromProfile('mr');
       expect(provider.currentLanguageCode, 'mr');
-      expect(provider.getText('app_title'), 'शिल्पसेतू');
+      expect(provider.getText('app_title'), 'हुनरसाथी');
     });
 
     testWidgets('LanguageSelectionScreen displays exactly 3 languages and switches to Marathi', (tester) async {

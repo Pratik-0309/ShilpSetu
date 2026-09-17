@@ -97,7 +97,9 @@ def update_user(uid):
         'name', 'phone', 'phone_number', 'language_preference', 'artisan_cluster',
         'region', 'role', 'date_of_birth', 'gender', 'marital_status',
         'experience_years', 'story', 'artisan_story', 'profile_photo_url',
-        'cover_photo_url', 'is_profile_completed', 'craft_category'
+        'cover_photo_url', 'is_profile_completed', 'craft_category',
+        'delivery_address', 'business_name', 'organization_name',
+        'bank_account_details', 'story_audio_url'
     ]
     updates = {k: v for k, v in data.items() if k in allowed_fields}
 
@@ -181,25 +183,30 @@ def calculate_trust_score(uid: str, db=None) -> dict:
     elif total_orders > 0:
         completion_rate = 0.95
     else:
-        completion_rate = 1.0
+        completion_rate = 0.0
 
-    avg_rating = round(sum(ratings) / len(ratings), 1) if ratings else 4.8
-    # Weighted calculation: Completion rate (scaled to 5.0) * 0.5 + Avg Rating * 0.5
-    trust_score = round((completion_rate * 5.0 * 0.5) + (avg_rating * 0.5), 1)
-
-    if trust_score >= 4.7:
-        badge = "🌟 Master Artisan"
-    elif trust_score >= 4.3:
-        badge = "✅ Verified Artisan"
-    elif trust_score >= 4.0:
-        badge = "🌱 Rising Artisan"
+    has_ratings = len(ratings) > 0
+    avg_rating = round(sum(ratings) / len(ratings), 1) if has_ratings else 0.0
+    
+    if has_ratings or finished_orders > 0:
+        trust_score = round((completion_rate * 5.0 * 0.5) + (avg_rating * 0.5), 1)
+        if trust_score >= 4.7:
+            badge = "🌟 Master Artisan"
+        elif trust_score >= 4.3:
+            badge = "✅ Verified Artisan"
+        elif trust_score >= 4.0:
+            badge = "🌱 Rising Artisan"
+        else:
+            badge = "✨ Certified Craftmaker"
     else:
-        badge = "✨ Certified Craftmaker"
+        trust_score = 0.0
+        badge = "🌱 New Artisan"
 
     score_data = {
         "uid": uid,
         "trust_score": trust_score,
         "rating": avg_rating,
+        "ratings_count": len(ratings),
         "completion_rate": completion_rate,
         "completion_rate_pct": int(completion_rate * 100),
         "total_orders": total_orders,

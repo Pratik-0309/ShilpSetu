@@ -1,8 +1,8 @@
-# 🎨 ShilpSetu (शिल्पसेतु)
+# 🎨 HunarSathi (हुनरसाथी)
 ### *AI-Driven Market Linkage & Smart Cataloging for Marginalized Artisans*
 > **Smart India Hackathon Project**
 
-Welcome to **ShilpSetu**! This platform empowers traditional and marginalized rural artisans (potters, weavers, handicraft makers) by giving them an accessible mobile app to digitize and sell their craft directly to national and global buyers.
+Welcome to **HunarSathi**! This platform empowers traditional and marginalized rural artisans (potters, weavers, handicraft makers) by giving them an accessible mobile app to digitize and sell their craft directly to national and global buyers.
 
 ---
 
@@ -78,7 +78,7 @@ You don't need any complex technical background! Follow these simple steps in yo
 2. Download all the required app dependencies:
    ```bash
    flutter pub get
-   ```
+   ```CD
 
 3. Start the app on your computer's browser (Chrome or Edge):
    ```bash

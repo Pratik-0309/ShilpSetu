@@ -8,7 +8,8 @@ import '../../widgets/app_back_button.dart';
 
 /// Orders screen for buyers — fetches from backend REST API.
 class BuyerOrdersScreen extends StatefulWidget {
-  const BuyerOrdersScreen({super.key});
+  final List<OrderModel>? initialOrders;
+  const BuyerOrdersScreen({super.key, this.initialOrders});
 
   @override
   State<BuyerOrdersScreen> createState() => _BuyerOrdersScreenState();
@@ -31,7 +32,12 @@ class _BuyerOrdersScreenState extends State<BuyerOrdersScreen> {
   @override
   void initState() {
     super.initState();
-    _loadOrders();
+    if (widget.initialOrders != null) {
+      _orders = List.from(widget.initialOrders!);
+      _isLoading = false;
+    } else {
+      _loadOrders();
+    }
   }
 
   Future<void> _loadOrders() async {
@@ -224,6 +230,8 @@ class _OrderCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                const SizedBox(width: 8),
+                _buildPaymentBadge(order),
                 const Spacer(),
                 Text(
                   order.id.length > 8 ? '#${order.id.substring(0, 8)}' : '#${order.id}',
@@ -335,9 +343,362 @@ class _OrderCard extends StatelessWidget {
                 ),
               ],
             ),
+
+            // ── 5-Stage Order Tracking Timeline ─────────────────────────────
+            const SizedBox(height: 14),
+            const Divider(height: 1, color: AppTheme.borderGrey),
+            const SizedBox(height: 12),
+            _buildOrderTimeline(order),
           ],
         ),
       ),
     );
   }
+
+  Widget _buildOrderTimeline(OrderModel order) {
+    if (order.status == 'cancelled') {
+      String cancelTime = '';
+      for (final h in order.statusHistory) {
+        if (h.status == 'cancelled') {
+          cancelTime = _formatTimelineDate(h.timestamp);
+          break;
+        }
+      }
+      if (cancelTime.isEmpty && order.updatedAt.isNotEmpty) {
+        cancelTime = _formatTimelineDate(order.updatedAt);
+      }
+
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.warningRed.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.warningRed.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.cancel_rounded, color: AppTheme.warningRed, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Order Cancelled',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.warningRed,
+                      fontSize: 13,
+                    ),
+                  ),
+                  if (cancelTime.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Cancelled on ${cancelTime.replaceAll('\n', ' ')}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 5 canonical stages in order:
+    // 1: placed, 2: packed, 3: shipped, 4: out_for_delivery, 5: delivered
+    int currentStage = 1;
+    switch (order.status) {
+      case 'pending':
+        currentStage = 1;
+        break;
+      case 'confirmed':
+        currentStage = 2;
+        break;
+      case 'shipped':
+        currentStage = 3;
+        break;
+      case 'out_for_delivery':
+        currentStage = 4;
+        break;
+      case 'delivered':
+      case 'paid':
+        currentStage = 5;
+        break;
+      default:
+        currentStage = 1;
+    }
+
+    final stages = [
+      _StageInfo(
+        key: 'placed',
+        label: 'Order Placed',
+        icon: Icons.check_rounded,
+        timestamp: _findStageTimestamp(order, 'placed', 1, currentStage),
+      ),
+      _StageInfo(
+        key: 'packed',
+        label: 'Packed',
+        icon: Icons.inventory_2_rounded,
+        timestamp: _findStageTimestamp(order, 'packed', 2, currentStage),
+      ),
+      _StageInfo(
+        key: 'shipped',
+        label: 'Shipped',
+        icon: Icons.local_shipping_rounded,
+        timestamp: _findStageTimestamp(order, 'shipped', 3, currentStage),
+      ),
+      _StageInfo(
+        key: 'out_for_delivery',
+        label: 'Out for Delivery',
+        icon: Icons.location_on_rounded,
+        timestamp: _findStageTimestamp(order, 'out_for_delivery', 4, currentStage),
+      ),
+      _StageInfo(
+        key: 'delivered',
+        label: 'Delivered',
+        icon: Icons.home_rounded,
+        timestamp: _findStageTimestamp(order, 'delivered', 5, currentStage),
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Horizontal node row with interconnecting lines
+        Row(
+          children: [
+            for (int i = 0; i < stages.length; i++)
+              Expanded(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        height: 3,
+                        color: i == 0
+                            ? Colors.transparent
+                            : (i + 1 <= currentStage
+                                ? AppTheme.successGreen
+                                : const Color(0xFFE5E7EB)),
+                      ),
+                    ),
+                    _buildStageCircle(stages[i], isCompleted: i + 1 <= currentStage),
+                    Expanded(
+                      child: Container(
+                        height: 3,
+                        color: i == stages.length - 1
+                            ? Colors.transparent
+                            : (i + 2 <= currentStage
+                                ? AppTheme.successGreen
+                                : const Color(0xFFE5E7EB)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        // Labels & Timestamps row
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (int i = 0; i < stages.length; i++)
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(
+                      stages[i].label,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: i + 1 <= currentStage
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        color: i + 1 <= currentStage
+                            ? AppTheme.darkIndigo
+                            : const Color(0xFF9CA3AF),
+                      ),
+                    ),
+                    if (i + 1 <= currentStage && stages[i].timestamp != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        _formatTimelineDate(stages[i].timestamp!),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 9,
+                          height: 1.25,
+                          color: Color(0xFF6B7280),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  String? _findStageTimestamp(
+      OrderModel order, String stageKey, int stageIndex, int currentStage) {
+    if (stageIndex > currentStage) return null;
+
+    // Search statusHistory
+    for (final h in order.statusHistory) {
+      if (h.status.toLowerCase() == stageKey.toLowerCase() && h.timestamp.isNotEmpty) {
+        return h.timestamp;
+      }
+    }
+
+    // Alternative status aliases in history
+    if (stageKey == 'placed') {
+      for (final h in order.statusHistory) {
+        if (h.status.toLowerCase() == 'pending' && h.timestamp.isNotEmpty) {
+          return h.timestamp;
+        }
+      }
+      if (order.createdAt.isNotEmpty) return order.createdAt;
+    }
+    if (stageKey == 'packed') {
+      for (final h in order.statusHistory) {
+        if (h.status.toLowerCase() == 'confirmed' && h.timestamp.isNotEmpty) {
+          return h.timestamp;
+        }
+      }
+    }
+    if (stageKey == 'delivered') {
+      for (final h in order.statusHistory) {
+        if (h.status.toLowerCase() == 'paid' && h.timestamp.isNotEmpty) {
+          return h.timestamp;
+        }
+      }
+    }
+
+    // Fallbacks for older orders
+    if (stageIndex == currentStage && order.updatedAt.isNotEmpty) {
+      return order.updatedAt;
+    }
+    if (stageIndex == 1 && order.createdAt.isNotEmpty) {
+      return order.createdAt;
+    }
+    return null;
+  }
+
+  String _formatTimelineDate(String isoStr) {
+    if (isoStr.trim().isEmpty) return '';
+    try {
+      final dt = DateTime.parse(isoStr.replaceFirst('Z', '+00:00')).toLocal();
+      const months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      ];
+      final m = months[dt.month - 1];
+      final d = dt.day;
+      final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+      final min = dt.minute.toString().padLeft(2, '0');
+      final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+      return '$d $m\n$hour:$min $ampm';
+    } catch (_) {
+      return isoStr.length > 10 ? isoStr.substring(0, 10) : isoStr;
+    }
+  }
+
+  Widget _buildStageCircle(_StageInfo stage, {required bool isCompleted}) {
+    if (isCompleted) {
+      return Container(
+        width: 28,
+        height: 28,
+        decoration: const BoxDecoration(
+          color: AppTheme.successGreen,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(stage.icon, color: Colors.white, size: 15),
+      );
+    }
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: const Color(0xFFD1D5DB), width: 2),
+      ),
+      child: Icon(stage.icon, color: const Color(0xFF9CA3AF), size: 14),
+    );
+  }
+
+  Widget _buildPaymentBadge(OrderModel order) {
+    final isUpi = order.paymentMethod.toUpperCase() == 'UPI';
+    final isPaid = order.paymentStatus.toLowerCase() == 'paid';
+    final isFailed = order.paymentStatus.toLowerCase() == 'payment_failed';
+
+    final Color badgeColor;
+    final String label;
+    final IconData icon;
+
+    if (isFailed) {
+      badgeColor = AppTheme.warningRed;
+      label = 'Payment Failed';
+      icon = Icons.error_outline_rounded;
+    } else if (isUpi && isPaid) {
+      badgeColor = AppTheme.successGreen;
+      label = 'Paid via UPI';
+      icon = Icons.check_circle_rounded;
+    } else if (isUpi) {
+      badgeColor = const Color(0xFF2563EB);
+      label = 'UPI (${order.paymentStatus})';
+      icon = Icons.account_balance_wallet_outlined;
+    } else {
+      badgeColor = const Color(0xFFD97706);
+      label = isPaid ? 'COD (Collected)' : 'Cash on Delivery';
+      icon = Icons.payments_outlined;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: badgeColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: badgeColor),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: badgeColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StageInfo {
+  final String key;
+  final String label;
+  final IconData icon;
+  final String? timestamp;
+
+  const _StageInfo({
+    required this.key,
+    required this.label,
+    required this.icon,
+    this.timestamp,
+  });
 }

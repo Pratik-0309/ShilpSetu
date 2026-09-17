@@ -128,7 +128,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                'ShilpSetu',
+                lang.getText('app_title'),
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       color: AppTheme.primaryTerracotta,

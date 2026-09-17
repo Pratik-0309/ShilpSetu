@@ -2,6 +2,7 @@
 Analytics Summary Routes
 Aggregates sales metrics, monthly trends, AOV, and best-selling products for artisans.
 Used to render summary cards and fl_chart visualizations.
+Returns genuine zero data for new artisans with 0 orders/products (never fake/dummy figures).
 """
 from flask import Blueprint, jsonify, request
 from services.firebase_service import get_firestore_client
@@ -11,43 +12,39 @@ from collections import defaultdict
 analytics_bp = Blueprint('analytics', __name__)
 
 
-def _get_mock_analytics(artisan_id: str):
-    """Fallback analytics with realistic handicraft sales data."""
+def _get_zero_analytics(artisan_id: str) -> dict:
+    """Genuine zero/empty analytics for an artisan with no recorded sales yet."""
+    now = datetime.now(timezone.utc)
+    months_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    current_idx = now.month - 1
+    trend_months = [months_order[(current_idx - 5 + i) % 12] for i in range(6)]
+
     return {
         "artisan_id": artisan_id,
-        "total_revenue": 84500.0,
-        "total_orders": 36,
-        "completed_orders": 31,
-        "average_order_value": 2347.2,
-        "revenue_this_month": 32000.0,
-        "revenue_last_month": 24500.0,
-        "revenue_growth_pct": 30.6,
+        "total_revenue": 0.0,
+        "total_orders": 0,
+        "completed_orders": 0,
+        "average_order_value": 0.0,
+        "revenue_this_month": 0.0,
+        "revenue_last_month": 0.0,
+        "revenue_growth_pct": 0.0,
         "best_selling_product": {
-            "id": "prod_kulhad_01",
-            "title": "Terracotta Chai Kulhad Set (6 pcs)",
-            "units_sold": 142,
-            "revenue": 49700.0
+            "id": "",
+            "title": "No sales yet",
+            "units_sold": 0,
+            "revenue": 0.0
         },
         "order_status_counts": {
-            "pending": 3,
-            "confirmed": 2,
-            "shipped": 5,
-            "delivered": 26,
+            "pending": 0,
+            "confirmed": 0,
+            "shipped": 0,
+            "delivered": 0,
             "cancelled": 0
         },
         "monthly_trend": [
-            {"month": "Apr", "revenue": 14000.0, "orders": 6},
-            {"month": "May", "revenue": 18500.0, "orders": 8},
-            {"month": "Jun", "revenue": 16000.0, "orders": 7},
-            {"month": "Jul", "revenue": 21000.0, "orders": 9},
-            {"month": "Aug", "revenue": 24500.0, "orders": 10},
-            {"month": "Sep", "revenue": 32000.0, "orders": 14},
+            {"month": m, "revenue": 0.0, "orders": 0} for m in trend_months
         ],
-        "category_breakdown": [
-            {"category": "Pottery", "share_pct": 58},
-            {"category": "Textiles", "share_pct": 24},
-            {"category": "Woodwork", "share_pct": 18}
-        ]
+        "category_breakdown": []
     }
 
 
@@ -56,6 +53,7 @@ def get_analytics_summary():
     """
     GET /api/analytics/summary?artisan_id=<id>
     Aggregates orders and product metrics from Firestore for the given artisan.
+    Returns 100% genuine zero numbers for new users without orders.
     """
     artisan_id = request.args.get('artisan_id', '').strip()
     if not artisan_id:
@@ -63,7 +61,7 @@ def get_analytics_summary():
 
     db = get_firestore_client()
     if not db:
-        return jsonify({"success": True, "source": "mock", "data": _get_mock_analytics(artisan_id)}), 200
+        return jsonify({"success": True, "source": "zero_fallback", "data": _get_zero_analytics(artisan_id)}), 200
 
     try:
         # Fetch artisan's orders
@@ -75,9 +73,8 @@ def get_analytics_summary():
             orders.append(d)
 
         if not orders:
-            # Return realistic baseline if this artisan has no recorded orders yet
-            mock = _get_mock_analytics(artisan_id)
-            return jsonify({"success": True, "source": "baseline", "data": mock}), 200
+            # Genuine zero baseline for new artisans without orders
+            return jsonify({"success": True, "source": "firestore", "data": _get_zero_analytics(artisan_id)}), 200
 
         total_orders = len(orders)
         total_revenue = 0.0
@@ -103,8 +100,8 @@ def get_analytics_summary():
             pid = str(o.get('product_id', 'unknown'))
             ptitle = o.get('product_title') or o.get('item_name') or f"Product {pid[:6]}"
 
-            # Only count completed/confirmed revenue
-            if status in ['confirmed', 'shipped', 'delivered', 'pending']:
+            # Only count valid commercial orders
+            if status in ['confirmed', 'shipped', 'delivered', 'pending', 'paid']:
                 total_revenue += price
                 product_sales[pid]["units"] += qty
                 product_sales[pid]["revenue"] += price
@@ -132,11 +129,6 @@ def get_analytics_summary():
                 elif created_dt.year == prev_year and created_dt.month == prev_month:
                     rev_last_month += price
 
-        # If sparse history, ensure current month has at least current orders revenue
-        if rev_this_month == 0.0 and total_revenue > 0:
-            rev_this_month = total_revenue * 0.4
-            rev_last_month = total_revenue * 0.3
-
         growth_pct = 0.0
         if rev_last_month > 0:
             growth_pct = round(((rev_this_month - rev_last_month) / rev_last_month) * 100, 1)
@@ -147,18 +139,19 @@ def get_analytics_summary():
 
         # Best selling product
         best_pid = None
-        best_info = {"id": "", "title": "Handcrafted Items", "units_sold": 0, "revenue": 0.0}
+        best_info = {"id": "", "title": "No sales yet", "units_sold": 0, "revenue": 0.0}
         if product_sales:
             best_pid = max(product_sales.keys(), key=lambda k: product_sales[k]["revenue"])
             b = product_sales[best_pid]
-            best_info = {
-                "id": best_pid,
-                "title": b["title"] or "Handcrafted Item",
-                "units_sold": b["units"],
-                "revenue": round(b["revenue"], 1)
-            }
+            if b["units"] > 0:
+                best_info = {
+                    "id": best_pid,
+                    "title": b["title"] or "Handcrafted Item",
+                    "units_sold": b["units"],
+                    "revenue": round(b["revenue"], 1)
+                }
 
-        # Format monthly trend
+        # Format monthly trend for the last 6 months (genuine data, 0.0 if no orders that month)
         months_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
         current_idx = now.month - 1
         trend_months = [months_order[(current_idx - 5 + i) % 12] for i in range(6)]
@@ -171,17 +164,6 @@ def get_analytics_summary():
                 "orders": b["orders"]
             })
 
-        # If trend is empty, fill with realistic baseline
-        if all(t["revenue"] == 0.0 for t in monthly_trend):
-            monthly_trend = [
-                {"month": "Apr", "revenue": round(total_revenue * 0.1, 1), "orders": max(1, total_orders // 6)},
-                {"month": "May", "revenue": round(total_revenue * 0.15, 1), "orders": max(1, total_orders // 5)},
-                {"month": "Jun", "revenue": round(total_revenue * 0.12, 1), "orders": max(1, total_orders // 6)},
-                {"month": "Jul", "revenue": round(total_revenue * 0.18, 1), "orders": max(1, total_orders // 4)},
-                {"month": "Aug", "revenue": round(total_revenue * 0.22, 1), "orders": max(1, total_orders // 4)},
-                {"month": "Sep", "revenue": round(total_revenue * 0.23, 1), "orders": max(1, total_orders // 4)},
-            ]
-
         data = {
             "artisan_id": artisan_id,
             "total_revenue": round(total_revenue, 1),
@@ -193,10 +175,11 @@ def get_analytics_summary():
             "revenue_growth_pct": growth_pct,
             "best_selling_product": best_info,
             "order_status_counts": dict(status_counts),
-            "monthly_trend": monthly_trend
+            "monthly_trend": monthly_trend,
+            "category_breakdown": []
         }
         return jsonify({"success": True, "source": "firestore", "data": data}), 200
 
     except Exception as e:
-        # Fallback to safe response
-        return jsonify({"success": True, "source": "error_fallback", "data": _get_mock_analytics(artisan_id), "note": str(e)}), 200
+        # Fallback to genuine zero response on error
+        return jsonify({"success": True, "source": "zero_fallback", "data": _get_zero_analytics(artisan_id), "note": str(e)}), 200

@@ -1,14 +1,66 @@
-import os
+import io
 import logging
+import os
+from dotenv import load_dotenv
 from services.firebase_service import get_firestore_client
 
+load_dotenv()
 logger = logging.getLogger(__name__)
 
 
-def _get_artisan_context(artisan_id: str) -> dict:
-    """Fetches real artisan catalog and sales context from Firestore,
+def _build_system_instruction(language: str) -> str:
+    """Builds a comprehensive, flexible system instruction for HunarSathi Business Guide.
 
-    or provides realistic fallback cooperative context.
+    Shapes HOW Gemini should respond rather than enforcing rigid, canned templates.
+    """
+    lang_name = "Hindi" if language == "hi" else ("Marathi" if language == "mr" else "English")
+    lang_guidance = {
+        "hi": "उत्तर सरल, आदरयुक्त और स्वाभाविक हिंदी में (Devanagari script) दें। कारीगर को सम्मानपूर्वक 'शिल्पकार जी' कहकर संबोधित करें।",
+        "mr": "उत्तर शुद्ध, आदरयुक्त आणि सहज मराठीत (Devanagari script) द्या. कारागिरास 'शिल्पकार जी' म्हणून आदराने संबोधा.",
+        "en": "Respond in warm, respectful, natural English. Address the user warmly as 'Artisan' or by their name if available."
+    }.get(language, "Respond in warm, respectful, natural English.")
+
+    return f"""You are "HunarSathi Business Guide" (हुनरसाथी बिज़नेस गाइड / हुनरसाथी व्यवसाय मार्गदर्शक) — a knowledgeable, warm, and encouraging advisor dedicated to empowering Indian rural, traditional, and indigenous artisans, handloom weavers, and craftspeople.
+
+CORE IDENTITY & LANGUAGE:
+- You speak fluently in {lang_name} ({lang_guidance}).
+- Maintain a warm, encouraging, respectful, and peer-like tone at all times.
+- Never be condescending or excessively bureaucratic; explain business concepts simply and practically.
+
+SCOPE OF EXPERTISE:
+You confidently and accurately assist artisans across these key areas:
+1. Business & Commercial Strategy:
+   - Pricing formulas and cost calculation: breaking down raw material expenses, skilled labor hours/wages, firing/fuel/workshop overheads, protective packaging costs, platform fees, and sustainable profit margins.
+   - Packaging & Logistics: safe multi-layer packaging for fragile items (terracotta, ceramics, glassware, brass), unboxing aesthetics, and courier readiness.
+   - Seasonal Demand & Festivals: planning stock and gift combos for Diwali, Rakhi, Holi, festive wedding seasons, local melas, and corporate gifting.
+   - Customer Relations & Growth: handling customer queries, writing compelling product descriptions, photography tips with basic smartphones, and selling online through e-commerce or HunarSathi.
+2. Craft & Cultural Heritage:
+   - Deep knowledge of traditional Indian handicrafts, folk art forms, and heritage craft traditions (e.g., Madhubani painting, Dhokra / lost-wax brass casting, Warli art, Pattachitra, terracotta pottery, handloom textiles like Banarasi, Chanderi, Paithani, block printing like Bagru/Ajrakh, wood carving, etc.).
+   - Craft histories, cultural symbolism, authentic techniques, and regional artisan cluster contexts across Indian states.
+   - Helping artisans articulate their unique craft stories to connect emotionally with modern buyers.
+3. Tangentially Related Artisan Matters:
+   - Government welfare schemes and artisan support programs (e.g., PM Vishwakarma Yojana, Pehchan Artisan ID card, Ambedkar Hastshilp Vikas Yojana, Mudra loans, One District One Product (ODOP), craft marketing exhibitions like Dilli Haat and Saras Mela).
+   - Raw material sourcing centers and artisan cooperatives.
+   - When discussing government schemes, provide clear, helpful overviews using your general knowledge, and explicitly advise the artisan to verify exact eligibility criteria, documents, or current deadlines on official government portals (such as craftclusters.gov.in or pmvishwakarma.gov.in) or at their local District Industries Centre (DIC), as government policies are subject to periodic updates.
+
+HANDLING OFF-TOPIC / UNRELATED QUESTIONS:
+- If a user asks something completely outside crafts, business, or Indian culture (e.g., "what's the weather today", "tell me a joke", cricket scores, movies, coding/programming):
+  - Do NOT issue a rigid, robotic error or generic canned rejection.
+  - Politely and briefly acknowledge the question. If it is simple and harmless (like asking for a lighthearted joke), feel free to share a brief, wholesome joke or friendly greeting first.
+  - Then gracefully and naturally steer the conversation back to your core mission — for instance:
+    "That's a bit outside what I can help with best — I'm here primarily to help you with your craft business, fair pricing, packaging, and Indian art traditions. Is there something about your craft work or sales I can help you with today?"
+  - Let this redirection feel natural, friendly, and conversational in {lang_name}.
+
+RESPONSE STYLE:
+- Genuinely address the SPECIFIC question asked. Reference actual details from the user's question (e.g., if they ask about silk saree pricing, talk specifically about silk yarn costs, zari, loom time, and saree margins; if they ask about terracotta pots in Maharashtra, address pottery in Maharashtra and local rates).
+- NEVER output a generic copy-paste or pre-written template.
+- Make answers concise, structured, and easy to read on mobile screens (use clean bullet points or steps when giving calculations or practical advice).
+"""
+
+
+def _get_artisan_context(artisan_id: str, artisan_profile: dict = None) -> dict:
+    """Fetches real artisan catalog and sales context from Firestore,
+    supplemented by any profile details passed from client.
     """
     products = []
     orders = []
@@ -16,11 +68,9 @@ def _get_artisan_context(artisan_id: str) -> dict:
     db = get_firestore_client()
     if db:
         try:
-            # Try fetching products for this artisan
             prod_docs = db.collection('products').where('artisan_id', '==', artisan_id).stream()
             products = [doc.to_dict() | {"id": doc.id} for doc in prod_docs]
             if not products:
-                # If specific artisan has no products yet, get general products
                 all_prod = db.collection('products').limit(5).stream()
                 products = [doc.to_dict() | {"id": doc.id} for doc in all_prod]
 
@@ -29,7 +79,6 @@ def _get_artisan_context(artisan_id: str) -> dict:
         except Exception as e:
             logger.warning(f"Could not fetch Firestore context for assistant ({e})")
 
-    # If still empty, use realistic craft cooperative defaults
     if not products:
         products = [
             {
@@ -57,8 +106,18 @@ def _get_artisan_context(artisan_id: str) -> dict:
         ]
 
     categories = list(set(p.get("category", "Handicraft") for p in products))
+
+    profile_info = {
+        "name": (artisan_profile or {}).get("name") or "शिल्पकार साथी",
+        "craft_type": (artisan_profile or {}).get("craft") or (artisan_profile or {}).get("craft_type") or (categories[0] if categories else "हस्तशिल्प"),
+        "cluster": (artisan_profile or {}).get("region") or (artisan_profile or {}).get("artisanCluster") or "भारत",
+        "experience": (artisan_profile or {}).get("experience") or (artisan_profile or {}).get("craftExperience") or "",
+        "story": (artisan_profile or {}).get("story") or (artisan_profile or {}).get("artisanStory") or "",
+    }
+
     return {
         "artisan_id": artisan_id,
+        "profile": profile_info,
         "products": products,
         "orders": orders,
         "categories": categories,
@@ -67,186 +126,16 @@ def _get_artisan_context(artisan_id: str) -> dict:
     }
 
 
-def _generate_intelligent_craft_answer(question: str, language: str, context: dict) -> str:
-    """Generates precise, regional, craft-specific business and pricing advice
-
-    for Indian traditional artisans when offline or when external AI API is unavailable.
-    """
-    q_lower = question.lower()
-    is_english = language == "en" or any(w in q_lower for w in ["what", "how", "price", "rate", "cost", "current", "where", "why", "sell"])
-
-    # Detect craft category
-    category = "Pottery"
-    if any(w in q_lower for w in ["pot", "pottery", "clay", "kulhad", "matka", "terracotta", "मिट्टी", "कुल्हड़", "मटका", "घड़ा", "बर्तन"]):
-        category = "Pottery"
-    elif any(w in q_lower for w in ["textile", "saree", "cloth", "stole", "fabric", "khadi", "handloom", "वस्त्र", "साड़ी", "कपड़ा", "हथकरघा"]):
-        category = "Textiles"
-    elif any(w in q_lower for w in ["paint", "painting", "madhubani", "warli", "pattachitra", "पेंटिंग", "चित्र", "चित्रकला", "मधुबनी"]):
-        category = "Painting"
-    elif any(w in q_lower for w in ["metal", "brass", "dhokra", "bronze", "धातु", "ढोकरा", "पीतल"]):
-        category = "Metal Craft"
-    elif any(w in q_lower for w in ["wood", "wooden", "carving", "लकड़ी", "काष्ठ"]):
-        category = "Wood Craft"
-    elif any(w in q_lower for w in ["jewel", "jewellery", "jewelry", "ornament", "आभूषण", "गहना"]):
-        category = "Jewellery"
-
-    # Detect region
-    region = "General"
-    if any(w in q_lower for w in ["maharashtra", "mumbai", "pune", "dharavi", "kumbharwada", "महाराष्ट्र", "मुंबई", "पुणे"]):
-        region = "Maharashtra"
-    elif any(w in q_lower for w in ["uttar pradesh", "up", "gorakhpur", "khurja", "varanasi", "उत्तर प्रदेश", "गोरखपुर", "खुर्जा"]):
-        region = "Uttar Pradesh"
-    elif any(w in q_lower for w in ["rajasthan", "jaipur", "bagru", "jodhpur", "राजस्थान", "जयपुर"]):
-        region = "Rajasthan"
-    elif any(w in q_lower for w in ["bihar", "madhubani", "patna", "बिहार"]):
-        region = "Bihar"
-    elif any(w in q_lower for w in ["gujarat", "kutch", "ahmedabad", "गुजरात", "कच्छ"]):
-        region = "Gujarat"
-    elif any(w in q_lower for w in ["bengal", "kolkata", "bankura", "बंगाल"]):
-        region = "West Bengal"
-
-    # Check intent: Pricing / Current Market Rate
-    is_pricing_query = any(w in q_lower for w in ["price", "rate", "cost", "दाम", "कीमत", "भाव", "दर", "मूल्य", "कितना"])
-    is_sales_query = any(w in q_lower for w in ["sale", "sell", "order", "buyer", "customer", "बिक्री", "ग्राहक", "ऑर्डर", "बढ़ाएं"])
-    is_packaging_query = any(w in q_lower for w in ["pack", "packaging", "shipping", "delivery", "safe", "पार्सल", "पैकिंग", "पैकेजिंग", "डिलीवरी"])
-    is_festival_query = any(w in q_lower for w in ["diwali", "festival", "holi", "season", "त्योहार", "दीवाली", "दीपावली", "होली"])
-
-    if is_pricing_query:
-        if category == "Pottery":
-            if region == "Maharashtra":
-                if is_english:
-                    return (
-                        "In Maharashtra (including major markets like Mumbai, Pune, and Kumbharwada craft clusters), "
-                        "the current market price range for handcrafted clay pots and terracotta pottery is as follows:\n\n"
-                        "• Standard Terracotta / Clay Water Pots (Matkas): ₹220 – ₹450 per piece (depending on capacity: 5L–12L).\n"
-                        "• Decorative Planter Pots & Indoor Clay Pots: ₹350 – ₹750 per piece.\n"
-                        "• Traditional Warli-painted / Designer Terracotta Pots: ₹550 – ₹1,200 per piece for handcrafted designer finishes.\n"
-                        "• Terracotta Tea Kulhad Sets (Set of 6): ₹280 – ₹420.\n\n"
-                        "💡 Artisan Pricing Tip: For Maharashtra urban buyers, ensuring a smooth polished exterior, natural non-toxic sealant, "
-                        "and offering sturdy packaging allows you to comfortably price at the higher end (₹450+) with 40-50% profit margin over raw clay/fuel costs."
-                    )
-                else:
-                    return (
-                        "महाराष्ट्र (विशेषकर मुंबई, पुणे और कुंभारवाड़ा शिल्प क्षेत्रों) में हस्तनिर्मित मिट्टी के बर्तनों व गमलों का वर्तमान बाज़ार मूल्य इस प्रकार है:\n\n"
-                        "• पारंपरिक मिट्टी के मटके/घड़े: ₹220 से ₹450 प्रति पीस (5 से 12 लीटर क्षमता के अनुसार)।\n"
-                        "• सजावटी टेराकोटा गमले व प्लांटर्स: ₹350 से ₹750 प्रति पीस।\n"
-                        "• वारली कला से सजे डिज़ाइनर पॉट्स: ₹550 से ₹1,200 प्रति पीस।\n"
-                        "• टेराकोटा चाय कुल्हड़ सेट (6 पीस): ₹280 से ₹420।\n\n"
-                        "💡 सुझाव: महाराष्ट्र के शहरी खरीदारों के लिए बर्तनों की साफ़ फिनिशिंग और सुरक्षित पैकेजिंग रखें, जिससे आप सामग्री लागत (₹60-₹120) पर 40-50% तक का अच्छा मुनाफा कमा सकते हैं।"
-                    )
-            else:
-                if is_english:
-                    return (
-                        f"Current market prices for handcrafted {category} ({region if region != 'General' else 'Indian Craft Markets'}):\n\n"
-                        "• Everyday Clay Pots & Matkas: ₹180 – ₹380 per piece.\n"
-                        "• Studio & Garden Terracotta Pots: ₹320 – ₹680 per piece.\n"
-                        "• Handcrafted Chai Kulhad Sets (6 pcs): ₹250 – ₹400.\n\n"
-                        "💡 Recommendation: Price raw clay products at 2.8x to 3.5x your direct raw material & firing cost to cover your skilled labor and fair profit."
-                    )
-                else:
-                    return (
-                        f"हस्तनिर्मित मिट्टी के बर्तनों ({region if region != 'General' else 'भारतीय बाज़ारों'}) का वर्तमान मूल्य दायरा:\n\n"
-                        "• साधारण मिट्टी के बर्तन व मटके: ₹180 से ₹380 प्रति पीस।\n"
-                        "• टेराकोटा गार्डन व इनडोर पॉट्स: ₹320 से ₹680 प्रति पीस।\n"
-                        "• चाय कुल्हड़ सेट (6 पीस): ₹250 से ₹400।\n\n"
-                        "💡 सुझाव: अपनी कच्ची मिट्टी और भट्ठी की लागत का 2.8 से 3.5 गुना मूल्य रखें ताकि आपकी मेहनत का पूरा सम्मान मिले।"
-                    )
-        elif category == "Textiles":
-            if is_english:
-                return (
-                    f"Current market pricing for Handloom {category} in {region if region != 'General' else 'India'}:\n\n"
-                    "• Hand-block printed cotton stoles/dupattas: ₹450 – ₹950\n"
-                    "• Pure cotton handloom sarees: ₹1,400 – ₹3,800\n"
-                    "• Silk / Zari embroidered sarees: ₹3,500 – ₹9,500\n\n"
-                    "💡 Recommendation: Clearly highlight natural vegetable dyes and certified handloom tags to command premium pricing."
-                )
-            else:
-                return (
-                    f"हथकरघा वस्त्रों ({category}) का वर्तमान बाज़ार मूल्य:\n\n"
-                    "• ब्लॉक प्रिंट सूती स्टोल/दुपट्टा: ₹450 से ₹950\n"
-                    "• शुद्ध सूती हथकरघा साड़ी: ₹1,400 से ₹3,800\n"
-                    "• सिल्क व जरी पारंपरिक साड़ी: ₹3,500 से ₹9,500\n\n"
-                    "💡 सुझाव: प्राकृतिक रंगों और हाथ की बुनाई का विवरण लिखकर उचित मूल्य प्राप्त करें।"
-                )
-        else:
-            if is_english:
-                return (
-                    f"Current fair-trade market pricing for handcrafted {category} in {region if region != 'General' else 'India'}:\n\n"
-                    "• Small / Entry-level craft pieces: ₹300 – ₹650\n"
-                    "• Medium heritage items: ₹750 – ₹1,850\n"
-                    "• Masterpiece & large craft sets: ₹2,200 – ₹5,500+\n\n"
-                    "💡 Formula: (Raw Material Cost × 2.5) + (Artisan Labor Hours × ₹120/hr) + 20% Profit Margin."
-                )
-            else:
-                return (
-                    f"{category} हस्तशिल्प का वर्तमान निष्पक्ष बाज़ार मूल्य:\n\n"
-                    "• छोटे कलात्मक उत्पाद: ₹300 से ₹650\n"
-                    "• मध्यम आकार के शिल्प: ₹750 से ₹1,850\n"
-                    "• बड़े व विशेष मास्टरपीस उत्पाद: ₹2,200 से ₹5,500+\n\n"
-                    "💡 मूल्य निर्धारण नियम: सामग्री लागत का 2.5 से 3 गुना + कारीगरी का समय।"
-                )
-
-    elif is_packaging_query:
-        if is_english:
-            return (
-                f"Safe Packaging Guidelines for {category}:\n\n"
-                "1. Double-Layer Cushioning: Wrap each item in biodegradable honeycomb paper or 3-ply bubble wrap.\n"
-                "2. Corner Protection: Use corrugated corner guards inside a 5-ply sturdy cardboard box.\n"
-                "3. Artisan Story Card: Include a small handwritten note about your craft heritage inside the box to delight buyers."
-            )
-        else:
-            return (
-                f"{category} के लिए सुरक्षित पैकेजिंग के उपाय:\n\n"
-                "1. दोहरी सुरक्षा: उत्पाद को पहले पेपर या बबल रैप से 2-3 परतों में लपेटें।\n"
-                "2. मजबूत 5-प्लाई डिब्बा: परिवहन के दौरान टूटने से बचाने के लिए किनारों पर कार्डबोर्ड सपोर्ट लगाएं।\n"
-                "3. अपनी कला का कार्ड: डिब्बे में अपने हाथ से लिखा एक छोटा धन्यवाद कार्ड रखें जिससे ग्राहक दोबारा ऑर्डर करें।"
-            )
-
-    elif is_sales_query or is_festival_query:
-        if is_english:
-            return (
-                f"Actionable strategies to boost online orders for your {category}:\n\n"
-                "• High-Quality Visuals: Use clean neutral backgrounds (white/parchment) with bright daylight to showcase authentic texture.\n"
-                "• Gift Bundling: Create 2-in-1 combo sets (e.g. 6 Kulhads + Pot or Stole + Pouch) for festive gifting at a 10% bundle incentive.\n"
-                "• Craft Authenticity: Share that every piece is 100% handmade and naturally sourced in India."
-            )
-        else:
-            return (
-                f"अपने {category} की ऑनलाइन बिक्री और ऑर्डर बढ़ाने के प्रमुख तरीके:\n\n"
-                "• साफ़ और आकर्षक फोटो: अच्छी रोशनी और साफ़ बैकग्राउंड वाली तस्वीरें लगाएं ताकि उत्पाद प्रीमियम लगे।\n"
-                "• त्योहारों पर कॉम्बो पैक: 2-3 उत्पादों का उपहार सेट बनाएं (जैसे 6 कुल्हड़ + दीया) जिसे लोग आसानी से उपहार दे सकें।\n"
-                "• प्रामाणिकता का विवरण: उत्पाद विवरण में बताएं कि यह विशुद्ध पारंपरिक कला से हाथ द्वारा निर्मित है।"
-            )
-
-    # General supportive craft guidance
-    if is_english:
-        return (
-            f"Hello Artisan! Regarding your query about {question}:\n\n"
-            f"Your handcrafted {category} represents India's rich cultural heritage. "
-            "To maximize your fair income on ShilpSetu, focus on:\n"
-            "1. Accurate fair pricing calculated from material cost and skilled crafting time.\n"
-            "2. Professional clean studio photos that highlight your craft's authentic details.\n"
-            "3. Responsive customer service and safe packaging for 5-star ratings."
-        )
-    else:
-        return (
-            f"नमस्ते शिल्पकार जी! आपके सवाल '{question}' के संबंध में:\n\n"
-            f"आपका {category} भारत की अमूल्य सांस्कृतिक धरोहर है। "
-            "शिल्पसेतु पर अपनी आय और ग्राहक बढ़ाने के लिए इन 3 बातों का ध्यान रखें:\n"
-            "1. निष्पक्ष मूल्य निर्धारण: कच्ची सामग्री और कारीगरी के समय के अनुसार सही दाम तय करें।\n"
-            "2. साफ़ फोटो: उत्पाद की उच्च गुणवत्ता वाली फोटो अपलोड करें।\n"
-            "3. सुरक्षित पैकेजिंग: उत्पाद को मजबूती से पैक करें ताकि सुरक्षित डिलीवरी हो।"
-        )
-
-
 def ask_business_assistant(
     artisan_id: str,
     question: str,
-    language: str = "hi"
+    language: str = "hi",
+    conversation_history: list = None,
+    artisan_profile: dict = None
 ) -> dict:
-    """Answers artisan business & e-commerce questions using Gemini with live store context,
+    """Answers artisan business, craft, pricing, cultural, and related questions
 
-    and falls back to dynamic, regional handicraft market intelligence.
+    using Google Gemini AI freely without hardcoded templates or canned keyword responses.
     """
     if not question or not question.strip():
         return {
@@ -255,18 +144,17 @@ def ask_business_assistant(
             "friendly_error": "कृपया अपना सवाल पूछें (Please ask your question)"
         }
 
-    question = question.strip()
-    language = "hi" if language in ["hi", "hindi"] else "en"
+    raw_question = question.strip()
+    norm_lang = "hi"
+    if language in ["en", "english"]:
+        norm_lang = "en"
+    elif language in ["mr", "marathi"]:
+        norm_lang = "mr"
 
-    # Auto-detect language from question text if user typed in English
-    q_ascii = question.encode('ascii', 'ignore').decode('ascii').strip()
-    if len(q_ascii) / max(len(question), 1) > 0.7 and any(w in question.lower() for w in ["what", "how", "price", "rate", "cost", "is", "the", "in", "pot", "maharashtra", "why"]):
-        language = "en"
+    # Fetch store context and artisan profile
+    context = _get_artisan_context(artisan_id, artisan_profile)
+    profile = context.get("profile", {})
 
-    # 1. Fetch store context
-    context = _get_artisan_context(artisan_id)
-
-    # 2. Format context for AI
     products_summary = "\n".join([
         f"- {p.get('title', 'Craft Item')} | श्रेणी: {p.get('category', 'Craft')} | कीमत: ₹{p.get('price', 0)} | स्टॉक: {p.get('stock_quantity', p.get('stock', 0))}"
         for p in context["products"][:6]
@@ -277,86 +165,205 @@ def ask_business_assistant(
         for o in context["orders"][:4]
     ])
 
+    # Format multi-turn conversation history if available
+    history_formatted = ""
+    if conversation_history and isinstance(conversation_history, list):
+        recent_history = conversation_history[-8:]
+        for turn in recent_history:
+            role = "शिल्पकार (Artisan)" if turn.get("role") in ["user", "artisan"] else "व्यापार सहायक (Assistant)"
+            text = turn.get("text") or turn.get("content") or ""
+            if text:
+                history_formatted += f"{role}: {text}\n"
+
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
-    if api_key and not api_key.startswith("AQ."):
+    if not api_key:
+        logger.error("GEMINI_API_KEY is not set in environment.")
+        return {
+            "success": False,
+            "error": "GEMINI_API_KEY not configured",
+            "friendly_error": "AI सहायक सेवा वर्तमान में उपलब्ध नहीं है। कृपया व्यवस्थापक से संपर्क करें।",
+            "answer": "AI सहायक सेवा वर्तमान में उपलब्ध नहीं है। कृपया व्यवस्थापक से संपर्क करें।",
+            "language": norm_lang
+        }
+
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=api_key)
+        system_instruction = _build_system_instruction(norm_lang)
+
+        lang_label = "Hindi" if norm_lang == "hi" else ("Marathi" if norm_lang == "mr" else "English")
+
+        user_prompt = f"""ARTISAN PROFILE & CONTEXT:
+- Name: {profile.get('name', 'Artisan')}
+- Craft Specialty: {profile.get('craft_type', 'Handicraft')}
+- Region / Cluster: {profile.get('cluster', 'India')}
+{f"- Experience: {profile.get('experience')}" if profile.get('experience') else ""}
+{f"- Craft Story: {profile.get('story')}" if profile.get('story') else ""}
+
+CURRENT STORE CATALOG:
+{products_summary if products_summary else "(No products listed yet)"}
+
+RECENT ORDERS:
+{orders_summary if orders_summary else "(No recent orders)"}
+
+CONVERSATION HISTORY:
+{history_formatted if history_formatted else "(Start of conversation)"}
+
+ARTISAN'S QUESTION:
+"{raw_question}"
+
+Please provide your genuine, specific response as HunarSathi Business Guide in {lang_label}:"""
+
+        # Models prioritized by availability and speed in Google GenAI SDK
+        models_to_try = [
+            "gemini-3.5-flash-lite",
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-flash-latest"
+        ]
+
+        response_text = None
+        last_error = None
+
+        for model_name in models_to_try:
+            try:
+                res = client.models.generate_content(
+                    model=model_name,
+                    contents=user_prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                        temperature=0.6,
+                        max_output_tokens=1000,
+                    )
+                )
+                if res and res.text and res.text.strip():
+                    response_text = res.text.strip()
+                    logger.info(f"Gemini generation successful using model {model_name}")
+                    break
+            except Exception as ex:
+                last_error = ex
+                logger.warning(f"Gemini model {model_name} failed: {ex}")
+
+        if response_text:
+            return {
+                "success": True,
+                "artisan_id": artisan_id,
+                "question": raw_question,
+                "answer": response_text,
+                "language": norm_lang,
+                "context_summary": {
+                    "products_count": context["total_products"],
+                    "orders_count": context["total_orders"],
+                    "categories": context["categories"]
+                }
+            }
+        else:
+            raise RuntimeError(f"All Gemini models failed. Last error: {last_error}")
+
+    except Exception as e:
+        logger.error(f"Error communicating with Gemini API: {e}", exc_info=True)
+        friendly_err = {
+            "mr": "सध्या AI सहाय्यकाशी संपर्क साधण्यात अडचण येत आहे. कृपया आपले इंटरनेट तपासा आणि थोड्या वेळाने पुन्हा विचारा.",
+            "en": "Currently unable to reach the AI Business Guide. Please check your network connection and try again shortly.",
+            "hi": "वर्तमान में AI व्यापार मार्गदर्शक से संपर्क करने में समस्या आ रही है। कृपया अपना इंटरनेट कनेक्शन जांचें और कुछ समय बाद पुनः प्रयास करें।"
+        }.get(norm_lang, "Unable to reach AI assistant. Please try again.")
+
+        return {
+            "success": False,
+            "artisan_id": artisan_id,
+            "question": raw_question,
+            "error": str(e),
+            "friendly_error": friendly_err,
+            "answer": friendly_err,
+            "language": norm_lang
+        }
+
+
+def transcribe_assistant_speech(audio_bytes: bytes, filename: str = "assistant_audio.wav", language: str = "hi") -> dict:
+    """Transcribes artisan spoken question using Gemini multimodal STT with fallback to speech_service."""
+    if not audio_bytes or len(audio_bytes) < 80:
+        return {
+            "success": False,
+            "transcription": "",
+            "error": "Audio recording is empty or too short",
+            "friendly_error": "ऑडियो बहुत छोटा या खाली है, कृपया दोबारा बोलें (Recording too short, please speak again)"
+        }
+
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+
+    # 1. Try Gemini Multimodal Speech Transcription
+    if api_key:
         try:
             from google import genai
+            from google.genai import types
 
             client = genai.Client(api_key=api_key)
 
-            lang_instruction = (
-                "Respond in simple, warm, respectful Hindi (हिंदी) using Devanagari script. Keep language easy to understand for rural artisans."
-                if language == "hi"
-                else "Respond in clear, encouraging, accessible English."
+            # Determine mime type
+            mime_type = "audio/wav"
+            if filename.endswith(".mp3"):
+                mime_type = "audio/mp3"
+            elif filename.endswith(".ogg"):
+                mime_type = "audio/ogg"
+            elif filename.endswith(".m4a"):
+                mime_type = "audio/m4a"
+            elif filename.endswith(".webm"):
+                mime_type = "audio/webm"
+
+            stt_prompt = (
+                "You are an accurate speech-to-text transcriber for Indian craftspeople. "
+                "Transcribe the following audio recording verbatim into the language spoken (Hindi in Devanagari, Marathi in Devanagari, or English). "
+                "Return ONLY the transcribed text. Do not add quotes, explanation, punctuation marks like timestamps, or any other words."
             )
 
-            prompt = f"""
-You are "ShilpSetu Vyapaar Sahayak" (शिल्पसेतु व्यापार सहायक) — a wise, empathetic, encouraging Indian craft business counselor who empowers rural, indigenous, and marginalized traditional artisans.
-
-ARTISAN CONTEXT:
-Artisan ID: {artisan_id}
-Artisan's Active Craft Products:
-{products_summary}
-
-Recent Orders / Sales History:
-{orders_summary}
-
-ARTISAN'S QUESTION:
-"{question}"
-
-INSTRUCTIONS:
-1. Provide a direct, highly actionable, realistic answer tailored to Indian handicraft markets (e.g. festivals like Diwali/Holi/Wedding season, packaging safely, fair pricing, photo quality, customer trust, gifting bundles).
-2. Directly answer the artisan's exact question and location/craft mentioned. If they ask about pot prices in Maharashtra, provide the specific pot pricing in Maharashtra.
-3. Tone: Warm, respectful (use 'आप'), encouraging, and optimistic about their handicraft heritage.
-4. Length: 2 to 3 concise, digestible paragraphs with 2-3 bullet points. Do not write lengthy or intimidating walls of text.
-5. Language: {lang_instruction}
-"""
-
-            models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash"]
-            response_text = None
-
-            for model_name in models_to_try:
+            models = ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash"]
+            for m in models:
                 try:
                     res = client.models.generate_content(
-                        model=model_name,
-                        contents=prompt
+                        model=m,
+                        contents=[
+                            types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+                            stt_prompt
+                        ]
                     )
-                    if res and res.text:
-                        response_text = res.text.strip()
-                        break
-                except Exception as ex:
-                    logger.warning(f"Assistant model {model_name} failed: {ex}")
+                    if res and res.text and res.text.strip():
+                        transcribed = res.text.strip().strip('"\'')
+                        logger.info(f"Gemini voice transcription successful: '{transcribed}'")
+                        return {
+                            "success": True,
+                            "transcription": transcribed,
+                            "language": language
+                        }
+                except Exception as mex:
+                    logger.warning(f"Gemini STT model {m} failed: {mex}")
+        except Exception as ex:
+            logger.warning(f"Gemini multimodal STT failed ({ex}). Falling back to Google Speech Recognition.")
 
-            if response_text:
-                return {
-                    "success": True,
-                    "artisan_id": artisan_id,
-                    "question": question,
-                    "answer": response_text,
-                    "language": language,
-                    "context_summary": {
-                        "products_count": context["total_products"],
-                        "orders_count": context["total_orders"],
-                        "categories": context["categories"]
-                    }
-                }
-
-        except Exception as e:
-            logger.warning(f"Gemini assistant generation failed ({e}). Using intelligent rule-based counselor.")
-
-    # Dynamic Regional Handicraft Intelligence Engine
-    answer = _generate_intelligent_craft_answer(question, language, context)
-
-    return {
-        "success": True,
-        "artisan_id": artisan_id,
-        "question": question,
-        "answer": answer,
-        "language": language,
-        "context_summary": {
-            "products_count": context["total_products"],
-            "orders_count": context["total_orders"],
-            "categories": context["categories"]
+    # 2. Fallback to speech_service (Google SpeechRecognition engine)
+    try:
+        from services.speech_service import transcribe_audio
+        res = transcribe_audio(audio_bytes, filename=filename, lang_code=language)
+        if res.get("success") and res.get("transcript"):
+            return {
+                "success": True,
+                "transcription": res.get("transcript", "").strip(),
+                "language": language
+            }
+        else:
+            return {
+                "success": False,
+                "transcription": "",
+                "error": res.get("error") or "Could not transcribe audio",
+                "friendly_error": res.get("friendly_error") or "आवाज़ स्पष्ट नहीं सुनाई दी, कृपया दोबारा बोलें"
+            }
+    except Exception as e:
+        logger.error(f"Fallback STT error: {e}")
+        return {
+            "success": False,
+            "transcription": "",
+            "error": str(e),
+            "friendly_error": "आवाज़ को टेक्स्ट में बदलने में समस्या आई"
         }
-    }

@@ -105,7 +105,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 7. AI Counselor response bubble is rendered
-    expect(find.textContaining('शिल्पसेतु व्यापार सहायक'), findsWidgets);
+    expect(find.textContaining('हुनरसाथी व्यापार सहायक'), findsWidgets);
   });
 
   testWidgets('Test 3: MainScreen renders FloatingActionButton and AppBar entry points for Business Assistant', (tester) async {

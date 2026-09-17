@@ -3,10 +3,13 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../config/api_config.dart';
+import '../../models/order_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/buyer_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_back_button.dart';
+import '../../widgets/delivery_address_sheet.dart';
+import '../../widgets/payment_method_sheet.dart';
 import 'rfq_screen.dart';
 import 'supplier_comparison_screen.dart';
 
@@ -78,10 +81,10 @@ class _BuyerProductDetailScreenState extends State<BuyerProductDetailScreen> {
     setState(() => _isGeneratingPromo = false);
 
     final caption = promo?['caption'] ??
-        '🌿 Check out this authentic handcrafted $title on ShilpSetu!\n\n'
+        '🌿 Check out this authentic handcrafted $title on HunarSathi!\n\n'
         'Price: ₹${price.toStringAsFixed(0)}\n'
         'View Digital Craft Passport: ${ApiConfig.passportPublicView(productId.isNotEmpty ? productId : 'sample')}\n\n'
-        '#ShilpSetu #VocalForLocal #HandmadeInIndia';
+        '#HunarSathi #VocalForLocal #HandmadeInIndia';
 
     if (!mounted) return;
     showModalBottomSheet(
@@ -230,70 +233,110 @@ class _BuyerProductDetailScreenState extends State<BuyerProductDetailScreen> {
       return;
     }
 
-    setState(() => _orderingNow = true);
-    final messenger = ScaffoldMessenger.of(context);
-    final order = await BuyerService.instance.createOrder(
-      productId:    productId,
-      buyerId:      user.uid,
-      artisanId:    artisanId,
-      quantity:     _quantity,
-      totalPrice:   price * _quantity,
-      buyerName:    user.name,
-      productTitle: title,
+    // Step 1: Collect / Confirm Delivery Address
+    final addressMap = await showModalBottomSheet<dynamic>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DeliveryAddressSheet(
+        productId:    productId,
+        productTitle: title,
+        artisanId:    artisanId,
+        quantity:     _quantity,
+        totalPrice:   price * _quantity,
+        initialUser:  user,
+      ),
     );
-    if (!mounted) return;
-    setState(() => _orderingNow = false);
 
-    if (order != null) {
-      showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Row(
-            children: [
-              Icon(Icons.check_circle_rounded, color: AppTheme.successGreen, size: 28),
-              SizedBox(width: 10),
-              Text('Order Placed! 🎉'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              Text('Quantity: $_quantity unit${_quantity > 1 ? 's' : ''}'),
-              Text('Total: ₹${(price * _quantity).toStringAsFixed(0)}'),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F5E9),
-                  borderRadius: BorderRadius.circular(10),
+    if (!mounted || addressMap == null) return;
+
+    // Step 2: Confirm Order & Payment Method (Cash on Delivery)
+    final order = await showModalBottomSheet<OrderModel>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => PaymentMethodSheet(
+        productId:       productId,
+        productTitle:    title,
+        artisanId:       artisanId,
+        quantity:        _quantity,
+        totalPrice:      price * _quantity,
+        deliveryAddress: addressMap,
+        buyerUser:       user,
+      ),
+    );
+
+    if (!mounted || order == null) return;
+
+    // Step 3: Show Celebration Dialog
+    final isUpi = order.paymentMethod.toUpperCase() == 'UPI';
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle_rounded, color: AppTheme.successGreen, size: 28),
+            SizedBox(width: 10),
+            Text('Order Placed! 🎉'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text('Quantity: $_quantity unit${_quantity > 1 ? 's' : ''}'),
+            Text('Total: ₹${(price * _quantity).toStringAsFixed(0)}'),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(
+                  isUpi ? Icons.account_balance_wallet_rounded : Icons.payments_rounded,
+                  size: 14,
+                  color: isUpi ? AppTheme.successGreen : const Color(0xFFF59E0B),
                 ),
-                child: const Text(
-                  'Order ID will appear in your Orders screen. The artisan will confirm shortly.',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF2E7D32)),
+                const SizedBox(width: 5),
+                Text(
+                  isUpi ? 'Payment: Paid via UPI' : 'Payment: Cash on Delivery',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: isUpi ? AppTheme.successGreen : const Color(0xFFD97706),
+                  ),
                 ),
+              ],
+            ),
+            if (order.deliveryAddress.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Shipping to: ${order.deliveryAddress}',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF4B5563)),
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                'Order ID will appear in your Orders screen. The artisan will confirm shortly.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF2E7D32)),
+              ),
             ),
           ],
         ),
-      );
-    } else {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Failed to place order. Check backend connection.'),
-          backgroundColor: AppTheme.warningRed,
-        ),
-      );
-    }
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -411,12 +454,14 @@ class _BuyerProductDetailScreenState extends State<BuyerProductDetailScreen> {
                         children: [
                           const Icon(Icons.verified_rounded, color: AppTheme.successGreen, size: 16),
                           const SizedBox(width: 5),
-                          Text(
-                            '${_trustScore!['badge'] ?? 'Master Artisan'} • ${_trustScore!['trust_score'] ?? 4.8}★ (${_trustScore!['completion_rate_pct'] ?? 100}% Fulfillment)',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF5A4D45),
+                          Flexible(
+                            child: Text(
+                              '${_trustScore!['badge'] ?? 'Master Artisan'} • ${_trustScore!['trust_score'] ?? 4.8}★ (${_trustScore!['completion_rate_pct'] ?? 100}% Fulfillment)',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF5A4D45),
+                              ),
                             ),
                           ),
                         ],
@@ -736,12 +781,14 @@ class _BuyerProductDetailScreenState extends State<BuyerProductDetailScreen> {
                                         child: const Icon(Icons.verified_rounded, color: Color(0xFF2E7D32), size: 18),
                                       ),
                                       const SizedBox(width: 8),
-                                      const Text(
-                                        'Digital Craft Passport',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 15,
-                                          color: Color(0xFF2C221E),
+                                      const Expanded(
+                                        child: Text(
+                                          'Digital Craft Passport',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 15,
+                                            color: Color(0xFF2C221E),
+                                          ),
                                         ),
                                       ),
                                     ],

@@ -333,7 +333,7 @@ class _EmptyView extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             const Text(
-              'Add your first handicraft product and start selling on ShilpSetu!',
+              'Add your first handicraft product and start selling on HunarSathi!',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,

@@ -109,7 +109,7 @@ class LanguageProvider extends ChangeNotifier {
     // ═════════════════════════════════════════════════════════════════════════
     'hi': {
       // App Branding & General
-      'app_title': 'शिल्पसेतु',
+      'app_title': 'हुनरसाथी',
       'app_tagline': 'परंपरा • शिल्प • कल',
       'app_subtitle': 'हस्तशिल्प को दुनिया से जोड़ना',
       'see_all': 'सभी देखें',
@@ -130,7 +130,7 @@ class LanguageProvider extends ChangeNotifier {
       'phone': 'फ़ोन नंबर',
       'next_role': 'अगला: भूमिका चुनें',
       'already_have_account': 'पहले से खाता है? लॉग इन करें',
-      'login_title': 'शिल्पसेतु में आपका स्वागत है',
+      'login_title': 'हुनरसाथी में आपका स्वागत है',
       'login_sub': 'हस्तशिल्प को दुनिया से जोड़ना',
       'forgot_password': 'पासवर्ड भूल गए?',
       'login_btn': 'लॉग इन करें',
@@ -149,7 +149,7 @@ class LanguageProvider extends ChangeNotifier {
 
       // Role Selection
       'role_title': 'आपकी क्या भूमिका है?',
-      'role_sub': 'शिल्पसेतु पर आप क्या करना चाहते हैं?',
+      'role_sub': 'हुनरसाथी पर आप क्या करना चाहते हैं?',
       'role_artisan': 'मैं एक शिल्पकार हूँ',
       'role_artisan_desc': 'अपने शिल्पों को सूचीबद्ध करें, सीधे ऑर्डर प्राप्त करें और बिक्री बढ़ाएं',
       'role_buyer': 'मैं एक खरीदार हूँ',
@@ -163,7 +163,7 @@ class LanguageProvider extends ChangeNotifier {
       'tab_discover': 'खोजें',
       'tab_rfq': 'कोटेशन',
       'buyer_rfq_title': 'कोटेशन अनुरोध',
-      'title_home': 'शिल्पसेतु • होम',
+      'title_home': 'हुनरसाथी • होम',
       'title_catalog': 'शिल्प सूची',
       'title_orders': 'ऑर्डर्स व डिलीवरी',
       'title_profile': 'शिल्पकार प्रोफ़ाइल',
@@ -301,6 +301,15 @@ class LanguageProvider extends ChangeNotifier {
       // Profile Completion Flow
       'profile_completion_title': 'कारीगर प्रोफ़ाइल विवरण',
       'profile_completion_sub': 'अपनी व्यक्तिगत जानकारी, अनुभव और शिल्प कहानी साझा करें',
+      'buyer_profile_title': 'खरीदार प्रोफ़ाइल विवरण',
+      'buyer_profile_sub': 'व्यक्तिगत विवरण, वितरण पता और व्यावसायिक जानकारी प्रबंधित करें',
+      'profile_completion_banner': 'प्रोफ़ाइल पूर्णता',
+      'profile_completion_hint': 'सभी सुविधाएं अनलॉक करने के लिए प्रोफ़ाइल पूरी करें',
+      'profile_complete_ready': 'प्रोफ़ाइल 100% पूर्ण',
+      'help_support_title': 'सहायता और समर्थन',
+      'help_support_sub': 'ऑर्डर, डिलीवरी और प्रश्नों के लिए सहायता प्राप्त करें',
+      'business_name_label': 'व्यवसाय / संगठन का नाम',
+      'delivery_address_label': 'वितरण पता',
       'step_basic_info': 'बुनियादी जानकारी',
       'step_personal_info': 'व्यक्तिगत व अनुभव',
       'step_photos': 'प्रोफ़ाइल फोटो',
@@ -338,7 +347,7 @@ class LanguageProvider extends ChangeNotifier {
     // ═════════════════════════════════════════════════════════════════════════
     'en': {
       // App Branding & General
-      'app_title': 'ShilpSetu',
+      'app_title': 'HunarSathi',
       'app_tagline': 'Tradition • Craft • Tomorrow',
       'app_subtitle': 'Connecting artisans to the world',
       'see_all': 'See All',
@@ -359,7 +368,7 @@ class LanguageProvider extends ChangeNotifier {
       'phone': 'Phone Number',
       'next_role': 'Next: Choose Role',
       'already_have_account': 'Already have an account? Log In',
-      'login_title': 'Welcome to ShilpSetu',
+      'login_title': 'Welcome to HunarSathi',
       'login_sub': 'Connecting artisans to the world',
       'forgot_password': 'Forgot Password?',
       'login_btn': 'Log In',
@@ -378,7 +387,7 @@ class LanguageProvider extends ChangeNotifier {
 
       // Role Selection
       'role_title': 'Choose Your Role',
-      'role_sub': 'What would you like to do on ShilpSetu?',
+      'role_sub': 'What would you like to do on HunarSathi?',
       'role_artisan': 'I am an Artisan',
       'role_artisan_desc': 'List your crafts, receive direct orders, and grow your business',
       'role_buyer': 'I am a Buyer',
@@ -392,7 +401,7 @@ class LanguageProvider extends ChangeNotifier {
       'tab_discover': 'Discover',
       'tab_rfq': 'RFQ',
       'buyer_rfq_title': 'Request Quote (RFQ)',
-      'title_home': 'ShilpSetu • Home',
+      'title_home': 'HunarSathi • Home',
       'title_catalog': 'Craft Catalog',
       'title_orders': 'Orders & Delivery',
       'title_profile': 'Artisan Profile',
@@ -530,6 +539,15 @@ class LanguageProvider extends ChangeNotifier {
       // Profile Completion Flow
       'profile_completion_title': 'Artisan Profile Details',
       'profile_completion_sub': 'Share your personal information, experience, and craft journey',
+      'buyer_profile_title': 'Buyer Profile Details',
+      'buyer_profile_sub': 'Manage your personal details, delivery address & business info',
+      'profile_completion_banner': 'Profile Completion',
+      'profile_completion_hint': 'Complete your profile to unlock all features',
+      'profile_complete_ready': 'Profile 100% Complete',
+      'help_support_title': 'Help & Support',
+      'help_support_sub': 'Get assistance with orders, deliveries & queries',
+      'business_name_label': 'Business / Organization Name',
+      'delivery_address_label': 'Delivery Address',
       'step_basic_info': 'Basic Info',
       'step_personal_info': 'Personal & Craft',
       'step_photos': 'Photos',
@@ -567,7 +585,7 @@ class LanguageProvider extends ChangeNotifier {
     // ═════════════════════════════════════════════════════════════════════════
     'mr': {
       // App Branding & General
-      'app_title': 'शिल्पसेतू',
+      'app_title': 'हुनरसाथी',
       'app_tagline': 'परंपरा • शिल्प • भविष्य',
       'app_subtitle': 'कारागिरांना जगाशी जोडणे',
       'see_all': 'सर्व पहा',
@@ -588,7 +606,7 @@ class LanguageProvider extends ChangeNotifier {
       'phone': 'फोन नंबर',
       'next_role': 'पुढील: भूमिका निवडा',
       'already_have_account': 'आधीच खाते आहे? लॉग इन करा',
-      'login_title': 'शिल्पसेतूमध्ये आपले स्वागत आहे',
+      'login_title': 'हुनरसाथीमध्ये आपले स्वागत आहे',
       'login_sub': 'कारागिरांना जगाशी जोडणे',
       'forgot_password': 'पासवर्ड विसरलात?',
       'login_btn': 'लॉग इन करा',
@@ -607,7 +625,7 @@ class LanguageProvider extends ChangeNotifier {
 
       // Role Selection
       'role_title': 'तुमची भूमिका कोणती आहे?',
-      'role_sub': 'तुम्ही शिल्पसेतूवर काय करू इच्छिता?',
+      'role_sub': 'तुम्ही हुनरसाथीवर काय करू इच्छिता?',
       'role_artisan': 'मी एक कारागीर आहे',
       'role_artisan_desc': 'तुमच्या हस्तकलांची यादी तयार करा, थेट ऑर्डर्स मिळवा आणि विक्री वाढवा',
       'role_buyer': 'मी एक खरेदीदार आहे',
@@ -621,7 +639,7 @@ class LanguageProvider extends ChangeNotifier {
       'tab_discover': 'शोधा',
       'tab_rfq': 'कोटेशन',
       'buyer_rfq_title': 'दरपत्रक मागणी',
-      'title_home': 'शिल्पसेतू • मुख्य',
+      'title_home': 'हुनरसाथी • मुख्य',
       'title_catalog': 'शिल्प सूची',
       'title_orders': 'ऑर्डर्स आणि वितरण',
       'title_profile': 'कारागीर प्रोफाइल',
@@ -759,6 +777,15 @@ class LanguageProvider extends ChangeNotifier {
       // Profile Completion Flow
       'profile_completion_title': 'कारागीर प्रोफाइल तपशील',
       'profile_completion_sub': 'तुमची वैयक्तिक माहिती, अनुभव आणि हस्तकला कथा सामायिक करा',
+      'buyer_profile_title': 'खरेदीदार प्रोफाइल तपशील',
+      'buyer_profile_sub': 'वैयक्तिक तपशील, डिलिव्हरी पत्ता आणि व्यवसाय माहिती व्यवस्थापित करा',
+      'profile_completion_banner': 'प्रोफाइल पूर्णता',
+      'profile_completion_hint': 'सर्व वैशिष्ट्ये अनलॉक करण्यासाठी प्रोफाइल पूर्ण करा',
+      'profile_complete_ready': 'प्रोफाइल 100% पूर्ण',
+      'help_support_title': 'मदत आणि समर्थन',
+      'help_support_sub': 'ऑर्डर, डिलिव्हरी आणि प्रश्नांसाठी मदत मिळवा',
+      'business_name_label': 'व्यवसाय / संस्थेचे नाव',
+      'delivery_address_label': 'डिलिव्हरी पत्ता',
       'step_basic_info': 'मूलभूत माहिती',
       'step_personal_info': 'वैयक्तिक व अनुभव',
       'step_photos': 'फोटो',

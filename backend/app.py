@@ -13,7 +13,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
-logger = logging.getLogger("shilpsetu_backend")
+logger = logging.getLogger("hunarsathi_backend")
 
 # Startup verification for GEMINI_API_KEY
 gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
@@ -25,8 +25,11 @@ else:
     print("[STARTUP] GEMINI_API_KEY: NOT SET")
     logger.warning("[STARTUP] GEMINI_API_KEY not found in environment (.env). Fallback modes will be active.")
 
+
+
+
 def create_app():
-    """Application factory for ShilpSetu Flask Backend."""
+    """Application factory for HunarSathi Flask Backend."""
     app = Flask(__name__)
     
     # Enable Cross-Origin Resource Sharing (CORS) for mobile/web frontends
@@ -53,7 +56,7 @@ def create_app():
     @app.route("/")
     def index():
         return {
-            "app": "ShilpSetu Backend API",
+            "app": "HunarSathi Backend API",
             "version": "1.0.0",
             "health_check": "/api/health",
             "message": "AI-Driven Market Linkage and Smart Cataloging for Marginalized Artisans"
@@ -66,5 +69,5 @@ app = create_app()
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     debug = os.getenv("FLASK_ENV", "development") == "development"
-    logger.info(f"Starting ShilpSetu backend server on port {port} (debug={debug})...")
+    logger.info(f"Starting HunarSathi backend server on port {port} (debug={debug})...")
     app.run(host="0.0.0.0", port=port, debug=debug)
